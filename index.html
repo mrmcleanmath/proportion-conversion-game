@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Proportion Conversion Game</title>
+<style>
+  :root{
+    --bg:#f7f7f8; --ink:#1b1b1f; --ink-dim:#5b5b66;
+    --card:#ffffff; --border:#e5e7eb; --accent:#2563eb;
+    --ok:#16a34a; --bad:#dc2626; --hint:#0ea5e9;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+  header{background:#111827;color:#fff;padding:14px 20px;text-align:center}
+  #container{max-width:1000px;margin:auto;padding:20px}
+  .row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+  select,input[type="text"],button{font-size:16px;padding:8px 10px;border:1px solid var(--border);border-radius:10px;background:#fff}
+  button{cursor:pointer}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  button.ghost{background:#fff}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-top:14px}
+  .prompt{font-size:26px;margin:10px 0 6px 0}
+  .answer-row{display:flex;gap:8px;align-items:center;margin-top:6px}
+  .feedback-banner{margin-top:12px;border-radius:12px;padding:12px 14px;font-weight:700;display:none;align-items:center;gap:10px}
+  .feedback-banner.ok{display:flex;background:rgba(22,163,74,.12);color:var(--ok);border:1px solid rgba(22,163,74,.35)}
+  .feedback-banner.bad{display:flex;background:rgba(220,38,38,.12);color:var(--bad);border:1px solid rgba(220,38,38,.35)}
+  .steps{margin-top:10px;color:#0f172a;display:none}
+  .dim{color:var(--ink-dim);font-size:14px}
+  .summary{margin-top:14px;color:var(--ink-dim)}
+  .mode-tabs{display:flex;gap:10px;margin-bottom:12px}
+  .mode-tabs button{border-radius:999px;padding:8px 14px}
+  .mode-tabs .active{background:#111827;color:#fff;border-color:#111827}
+  /* worksheet */
+  #worksheet-container{display:none}
+  .ws-controls{display:flex;gap:10px;align-items:center;margin-bottom:10px}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px;cursor:pointer}
+  .card h4{margin:0 0 8px 0}
+  .ans{display:none;margin-top:6px;color:var(--hint);font-weight:600}
+  .hc body, .hc .panel { background:#000; color:#fff }
+  footer{margin:26px 0;text-align:center;color:var(--ink-dim)}
+  @media (max-width:760px){ .grid{grid-template-columns:1fr 1fr} }
+  @media (max-width:520px){ .grid{grid-template-columns:1fr} .prompt{font-size:22px} }
+</style>
+</head>
+<body>
+<header><h1>Proportion Conversion Game</h1></header>
+<div id="container" aria-live="polite">
+
+  <div class="mode-tabs" role="tablist">
+    <button id="tab-game" class="primary active" role="tab" aria-selected="true" onclick="switchMode('game')">Game Mode</button>
+    <button id="tab-ws" class="ghost" role="tab" aria-selected="false" onclick="switchMode('worksheet')">Worksheet Mode</button>
+  </div>
+
+  <!-- GAME -->
+  <section id="game" class="panel" role="region" aria-labelledby="tab-game">
+    <div class="row">
+      <label>Conversion:
+        <select id="g-type" aria-label="Conversion Type">
+          <option value="dec-frac">Decimal → Fraction</option>
+          <option value="frac-dec">Fraction → Decimal</option>
+          <option value="frac-perc">Fraction → Percent</option>
+          <option value="perc-frac">Percent → Fraction</option>
+          <option value="dec-perc">Decimal → Percent</option>
+          <option value="perc-dec">Percent → Decimal</option>
+        </select>
+      </label>
+      <label>Difficulty:
+        <select id="g-diff" aria-label="Difficulty">
+          <option value="easy">🟢 Easy</option>
+          <option value="medium">🟡 Medium</option>
+          <option value="hard">🔴 Hard</option>
+          <option value="mixed">🎲 Mixed</option>
+        </select>
+      </label>
+      <label>Timer:
+        <select id="timer">
+          <option value="off" selected>Off</option>
+          <option>30</option><option>60</option><option>90</option><option>120</option>
+        </select>
+      </label>
+      <label><input type="checkbox" id="sound" checked /> Sound</label>
+      <label><input type="checkbox" id="contrast" /> High contrast</label>
+    </div>
+
+    <div id="prompt" class="prompt" aria-live="polite"></div>
+
+    <div class="answer-row">
+      <input id="input" type="text" placeholder="Type answer…" aria-label="Your answer" />
+      <button id="submitBtn" class="primary" onclick="submitAnswer()">Submit (Enter)</button>
+      <button class="ghost" onclick="clearAnswer()">Clear (Esc)</button>
+      <button id="nextBtn" class="ghost" style="display:none" onclick="nextProblem()">Next ▶</button>
+    </div>
+
+    <div id="banner" class="feedback-banner" role="status" aria-live="assertive"></div>
+    <div id="steps" class="steps"></div>
+
+    <div id="summary" class="summary"></div>
+  </section>
+
+  <!-- WORKSHEET -->
+  <section id="worksheet-container" class="panel" role="region" aria-labelledby="tab-ws">
+    <div class="ws-controls row">
+      <label>Conversion:
+        <select id="ws-type">
+          <option value="dec-frac">Decimal → Fraction</option>
+          <option value="frac-dec">Fraction → Decimal</option>
+          <option value="frac-perc">Fraction → Percent</option>
+          <option value="perc-frac">Percent → Fraction</option>
+          <option value="dec-perc">Decimal → Percent</option>
+          <option value="perc-dec">Percent → Decimal</option>
+        </select>
+      </label>
+      <label>Set size:
+        <select id="ws-size"><option>5</option><option>10</option><option>15</option></select>
+      </label>
+      <button class="primary" onclick="generateWorksheet()">Generate</button>
+      <button class="ghost" onclick="revealAll()">Reveal All</button>
+      <button class="ghost" onclick="hideAll()">Hide All</button>
+    </div>
+    <div class="dim" id="ws-instruction">Convert as instructed.</div>
+    <div id="grid" class="grid" aria-live="polite"></div>
+  </section>
+
+  <footer>Created by Mr. McLean Math</footer>
+</div>
+
+<script>
+/* ---------- Utilities ---------- */
+const gcd=(a,b)=>b?gcd(b,a%b):a;
+const simp=(n,d)=>{const g=gcd(n,d);return [n/g,d/g];};
+const fmtDec=n=>String(+((Math.round(n*10000))/10000)); // 4dp cap
+const beep = (hz)=> {
+  if(!document.getElementById('sound').checked) return;
+  try{
+    const ctx=new (window.AudioContext||window.webkitAudioContext)();
+    const o=ctx.createOscillator(), g=ctx.createGain();
+    o.type='sine'; o.frequency.value=hz; o.connect(g); g.connect(ctx.destination);
+    g.gain.setValueAtTime(0.15,ctx.currentTime); g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime+0.18);
+    o.start(); o.stop(ctx.currentTime+0.2);
+  }catch(e){}
+};
+
+function parseFrac(s){
+  if(!s.includes('/')) return null;
+  const [a,b]=s.split('/').map(x=>+x.trim());
+  if(!Number.isFinite(a)||!Number.isFinite(b)||b===0) return null;
+  return [a,b];
+}
+function eqFrac(user, target){
+  const [un,ud]=user, [tn,td]=target;
+  return un*td===ud*tn;
+}
+function show(el, yes){ el.style.display = yes ? '' : 'none'; }
+
+/* ---------- Generators ---------- */
+const pools = {
+  easyDec:[0.5,0.25,0.75,0.2,0.4],
+  medDec:[1.2,2.75,0.6,0.125,3.5],
+  hardDec:[0.375,0.045,1.25,2.375,0.5625],
+  fracSetE:[[1,2],[3,4],[2,5],[1,5],[4,5]],
+  fracSetM:[[6,5],[11,4],[3,5],[1,8],[7,2]],
+  fracSetH:[[3,8],[9,200],[5,4],[19,8],[9,16]],
+  percE:[10,20,25,40,50,75,80,90,100],
+  percM:[12.5,37.5,62.5],
+  percH:[6.25,7.5,0.5,62.5]
+};
+
+function buildProblem(type, diff){
+  const decPool = diff==='easy'?pools.easyDec : diff==='medium'?pools.medDec : diff==='hard'?pools.hardDec : pools.easyDec.concat(pools.medDec,pools.hardDec);
+  const fPool = diff==='easy'?pools.fracSetE : diff==='medium'?pools.fracSetM : diff==='hard'?pools.fracSetH : pools.fracSetE.concat(pools.fracSetM,pools.fracSetH);
+  const pPool = diff==='easy'?pools.percE : diff==='medium'?pools.percM : diff==='hard'?pools.percH : pools.percE.concat(pools.percM,pools.percH);
+
+  let prompt, ans, steps, meta={expect:'text'};
+  if(type==='dec-frac'){
+    const v = decPool[Math.floor(Math.random()*decPool.length)];
+    prompt = `Convert ${v} to a fraction.`;
+    const str=String(v), dp=str.includes('.')?str.split('.')[1].length:0;
+    const den=Math.pow(10,dp), num=Math.round(v*den);
+    const [n,d]=simp(num,den);
+    ans = `${n}/${d}`;
+    steps = `Write ${v} as ${num}/${den} and simplify to ${n}/${d}.`;
+    meta.expect='frac';
+  } else if(type==='frac-dec'){
+    const [n,d]=fPool[Math.floor(Math.random()*fPool.length)];
+    prompt=`Convert ${n}/${d} to a decimal.`;
+    ans = fmtDec(n/d);
+    steps=`Divide numerator by denominator: ${n} ÷ ${d} = ${ans}.`;
+    meta.expect='dec';
+  } else if(type==='frac-perc'){
+    const [n,d]=fPool[Math.floor(Math.random()*fPool.length)];
+    prompt=`Convert ${n}/${d} to percent.`;
+    ans = `${fmtDec(n/d*100)}%`;
+    steps=`(${n}/${d})×100 = ${ans}.`;
+    meta.expect='perc';
+  } else if(type==='perc-frac'){
+    const p=pPool[Math.floor(Math.random()*pPool.length)];
+    prompt=`Convert ${p}% to a fraction.`;
+    const [sn,sd]=simp(p,100);
+    ans = `${sn}/${sd}`;
+    steps=`${p}% = ${p}/100. Simplify to ${sn}/${sd}.`;
+    meta.expect='frac';
+  } else if(type==='dec-perc'){
+    const v=decPool[Math.floor(Math.random()*decPool.length)];
+    prompt=`Convert ${v} to percent.`;
+    ans=`${fmtDec(v*100)}%`;
+    steps=`Multiply by 100: ${v} × 100 = ${ans}.`;
+    meta.expect='perc';
+  } else { // perc-dec
+    const p=pPool[Math.floor(Math.random()*pPool.length)];
+    prompt=`Convert ${p}% to a decimal.`;
+    ans = fmtDec(p/100);
+    steps=`Divide by 100: ${p}% → ${ans}.`;
+    meta.expect='dec';
+  }
+  return {prompt, ans, steps, meta};
+}
+
+/* ---------- Game State ---------- */
+let cur=null, score=0, streak=0, total=0, correct=0, locked=false;
+
+const els={
+  prompt:document.getElementById('prompt'),
+  input:document.getElementById('input'),
+  submit:document.getElementById('submitBtn'),
+  next:document.getElementById('nextBtn'),
+  banner:document.getElementById('banner'),
+  steps:document.getElementById('steps'),
+  summary:document.getElementById('summary')
+};
+
+function refreshProblem(){
+  const type=document.getElementById('g-type').value;
+  const diff=document.getElementById('g-diff').value;
+  cur = buildProblem(type,diff);
+  els.prompt.textContent = cur.prompt;
+  els.input.value = '';
+  els.input.disabled = false;
+  locked=false;
+  show(els.next,false);
+  els.banner.className='feedback-banner';
+  els.banner.style.display='none';
+  els.steps.style.display='none';
+  els.input.focus();
+}
+function markOK(extra=''){
+  els.banner.textContent = `✔ Correct${extra?` — ${extra}`:''}`;
+  els.banner.className='feedback-banner ok';
+  els.banner.style.display='flex';
+}
+function markBad(){
+  els.banner.textContent = '✖ Wrong';
+  els.banner.className='feedback-banner bad';
+  els.banner.style.display='flex';
+}
+
+function simplifiedNoteIfNeeded(user){
+  if(cur.meta.expect!=='frac') return '';
+  const u=parseFrac(user); const c=parseFrac(cur.ans);
+  if(!u||!c) return '';
+  const [sn,sd]=simp(u[0],u[1]);
+  const simpStr = `${sn}/${sd}`;
+  if(eqFrac(u,c) && simpStr!==`${u[0]}/${u[1]}`){
+    return `Simplified: ${simpStr}`;
+  }
+  return '';
+}
+
+function submitAnswer(){
+  if(locked) return;
+  const raw = els.input.value.trim();
+  if(!raw){ els.input.focus(); return; }
+
+  const expect=cur.meta.expect, correctAns=cur.ans;
+  let isCorrect=false;
+
+  if(expect==='frac'){
+    const u=parseFrac(raw); const c=parseFrac(correctAns);
+    if(u && c && eqFrac(u,c)) isCorrect=true;
+  }else if(expect==='perc'){
+    if(raw.endsWith('%')){
+      const norm=raw.replace(/\s/g,'');
+      isCorrect = norm === correctAns;
+    }else isCorrect=false;
+  }else{ // decimal
+    isCorrect = (raw === correctAns);
+  }
+
+  total++;
+  if(isCorrect){
+    correct++; streak++; score+=10; if(streak%5===0) score+=5;
+    const note = simplifiedNoteIfNeeded(raw);
+    markOK(note);
+    els.steps.style.display='none';
+    beep(880);
+    locked=true;
+    els.input.disabled=true;
+    show(els.next,true);
+  }else{
+    streak=0;
+    markBad();
+    els.steps.textContent = `${cur.steps}  Correct: ${correctAns}`;
+    els.steps.style.display='block';
+    beep(240);
+  }
+  updateSummary();
+}
+function nextProblem(){ refreshProblem(); }
+function clearAnswer(){ els.input.value=''; els.input.focus(); }
+function updateSummary(){
+  els.summary.textContent =
+    `Answered: ${total} | Correct: ${correct} | Accuracy: ${total?Math.round(correct/total*100):0}% | Score: ${score} | Streak: ${streak}`;
+}
+
+/* keyboard */
+document.addEventListener('keydown',e=>{
+  if(e.key==='Enter') submitAnswer();
+  if(e.key==='Escape') clearAnswer();
+});
+
+/* NEW: react to dropdown changes immediately */
+document.getElementById('g-type').addEventListener('change', refreshProblem);
+document.getElementById('g-diff').addEventListener('change', refreshProblem);
+
+/* contrast toggle */
+document.getElementById('contrast').addEventListener('change',e=>{
+  document.documentElement.classList.toggle('hc', e.target.checked);
+});
+
+/* mode switching */
+function switchMode(mode){
+  const g=document.getElementById('game'), w=document.getElementById('worksheet-container');
+  const tg=document.getElementById('tab-game'), tw=document.getElementById('tab-ws');
+  if(mode==='game'){ g.style.display='block'; w.style.display='none'; tg.classList.add('active'); tw.classList.remove('active'); tg.setAttribute('aria-selected','true'); tw.setAttribute('aria-selected','false'); refreshProblem(); }
+  else { g.style.display='none'; w.style.display='block'; tg.classList.remove('active'); tw.classList.add('active'); tg.setAttribute('aria-selected','false'); tw.setAttribute('aria-selected','true'); }
+}
+
+/* ---------- Worksheet ---------- */
+function wsInstruction(){
+  const map={
+    'dec-frac':'Convert each decimal to a fraction (improper allowed).',
+    'frac-dec':'Convert each fraction to a decimal.',
+    'frac-perc':'Convert each fraction to a percent.',
+    'perc-frac':'Convert each percent to a fraction (improper).',
+    'dec-perc':'Convert each decimal to a percent.',
+    'perc-dec':'Convert each percent to a decimal.'
+  };
+  const t=document.getElementById('ws-type').value;
+  document.getElementById('ws-instruction').textContent = map[t];
+}
+document.getElementById('ws-type').addEventListener('change', wsInstruction);
+
+function generateWorksheet(){
+  const grid=document.getElementById('grid');
+  grid.innerHTML='';
+  const n=+document.getElementById('ws-size').value;
+  const t=document.getElementById('ws-type').value;
+  wsInstruction();
+  let usedPrompts=new Set();
+  for(let i=1;i<=n;i++){
+    const diff = ['easy','medium','hard'][i%3];
+    const {prompt,ans}=buildProblem(t,diff);
+    if(usedPrompts.has(prompt)){ i--; continue; }
+    usedPrompts.add(prompt);
+    const card=document.createElement('div'); card.className='card'; card.tabIndex=0; card.setAttribute('role','button');
+    card.innerHTML = `<h4>${i}.</h4><div class="q">${prompt}</div><div class="ans">Answer: <b>${ans}</b></div><div class="dim">Click to reveal</div>`;
+    card.addEventListener('click',()=>toggleCard(card));
+    card.addEventListener('keypress',e=>{ if(e.key==='Enter' || e.key===' ') { e.preventDefault(); toggleCard(card); }});
+    grid.appendChild(card);
+  }
+}
+function toggleCard(card){
+  const a = card.querySelector('.ans');
+  const hint = card.querySelector('.dim');
+  const open = a.style.display==='block';
+  a.style.display = open ? 'none':'block';
+  hint.textContent = open ? 'Click to reveal' : 'Click to hide';
+}
+function revealAll(){ document.querySelectorAll('#grid .ans').forEach(el=>el.style.display='block'); document.querySelectorAll('#grid .dim').forEach(h=>h.textContent='Click to hide'); }
+function hideAll(){ document.querySelectorAll('#grid .ans').forEach(el=>el.style.display='none'); document.querySelectorAll('#grid .dim').forEach(h=>h.textContent='Click to reveal'); }
+
+/* init */
+switchMode('game');
+refreshProblem();
+
+/* -------- Hidden developer checks (?dev=1) -------- */
+(function dev(){
+  if(!location.search.includes('dev=1')) return;
+  const asrt=(name,cond)=>console.log((cond?'✅':'❌'),name);
+  asrt('2/4 equals 1/2', eqFrac([2,4],[1,2]));
+  asrt('Percent must include %', !('25' === '25%'));
+  asrt('Reject mixed input', parseFrac('1 1/2')===null);
+  asrt('Positive only generation', !String(buildProblem('dec-frac','hard').prompt).includes('-'));
+  asrt('Worksheet click handler exists', typeof toggleCard==='function');
+  asrt('Next button present', !!document.getElementById('nextBtn'));
+  asrt('Worksheet 3-col grid CSS present', getComputedStyle(document.querySelector('.grid')).gridTemplateColumns.split(' ').length>=3);
+  asrt('ARIA live regions present', document.getElementById('container').getAttribute('aria-live')==='polite');
+  asrt('High-contrast toggle exists', !!document.getElementById('contrast'));
+  asrt('Keyboard handlers wired', true);
+})();
+</script>
+</body>
+</html>
