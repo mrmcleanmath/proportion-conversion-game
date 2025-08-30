@@ -104,7 +104,7 @@
   <section id="worksheet-container" class="panel" role="region" aria-labelledby="tab-ws">
     <div class="ws-controls row">
       <label>Conversion:
-        <select id="ws-type">
+        <select id="ws-type" aria-label="Worksheet Conversion Type">
           <option value="dec-frac">Decimal → Fraction</option>
           <option value="frac-dec">Fraction → Decimal</option>
           <option value="frac-perc">Fraction → Percent</option>
@@ -113,8 +113,15 @@
           <option value="perc-dec">Percent → Decimal</option>
         </select>
       </label>
+      <label>Difficulty:
+        <select id="ws-diff" aria-label="Worksheet Difficulty">
+          <option value="easy">🟢 Easy</option>
+          <option value="medium">🟡 Medium</option>
+          <option value="hard">🔴 Hard</option>
+        </select>
+      </label>
       <label>Set size:
-        <select id="ws-size"><option>5</option><option>10</option><option>15</option></select>
+        <select id="ws-size" aria-label="Worksheet Set Size"><option>5</option><option>10</option><option>15</option></select>
       </label>
       <button class="primary" onclick="generateWorksheet()">Generate</button>
       <button class="ghost" onclick="revealAll()">Reveal All</button>
@@ -142,10 +149,10 @@ const beep = (hz)=> {
     o.start(); o.stop(ctx.currentTime+0.2);
   }catch(e){}
 };
-
 function parseFrac(s){
   if(!s.includes('/')) return null;
-  const [a,b]=s.split('/').map(x=>+x.trim());
+  const parts=s.split('/'); if(parts.length!==2) return null;
+  const a=+parts[0].trim(), b=+parts[1].trim();
   if(!Number.isFinite(a)||!Number.isFinite(b)||b===0) return null;
   return [a,b];
 }
@@ -153,7 +160,29 @@ function eqFrac(user, target){
   const [un,ud]=user, [tn,td]=target;
   return un*td===ud*tn;
 }
+function improperToMixed(n,d){
+  if(n<d) return null;
+  const whole=Math.floor(n/d);
+  const r=n%d; if(r===0) return `${whole}`;
+  const [rn,rd]=simp(r,d);
+  return `${whole} ${rn}/${rd}`;
+}
 function show(el, yes){ el.style.display = yes ? '' : 'none'; }
+
+/* Helpers to create integer fractions from decimals/percents */
+function decimalToFractionParts(v){
+  const s=String(v);
+  const dp = s.includes('.') ? s.split('.')[1].length : 0;
+  const den = Math.pow(10,dp);
+  const num = Math.round(v*den);
+  return [num,den]; // integers
+}
+function percentToFractionParts(p){
+  // p can be 12.5 etc. Convert p to integer fraction first.
+  const [pn,pd] = decimalToFractionParts(p); // p = pn/pd
+  // p% = (pn/pd)/100 = pn / (pd*100)
+  return [pn, pd*100];
+}
 
 /* ---------- Generators ---------- */
 const pools = {
@@ -168,6 +197,8 @@ const pools = {
   percH:[6.25,7.5,0.5,62.5]
 };
 
+function pick(pool){ return pool[Math.floor(Math.random()*pool.length)]; }
+
 function buildProblem(type, diff){
   const decPool = diff==='easy'?pools.easyDec : diff==='medium'?pools.medDec : diff==='hard'?pools.hardDec : pools.easyDec.concat(pools.medDec,pools.hardDec);
   const fPool = diff==='easy'?pools.fracSetE : diff==='medium'?pools.fracSetM : diff==='hard'?pools.fracSetH : pools.fracSetE.concat(pools.fracSetM,pools.fracSetH);
@@ -175,41 +206,43 @@ function buildProblem(type, diff){
 
   let prompt, ans, steps, meta={expect:'text'};
   if(type==='dec-frac'){
-    const v = decPool[Math.floor(Math.random()*decPool.length)];
+    const v = pick(decPool);
     prompt = `Convert ${v} to a fraction.`;
-    const str=String(v), dp=str.includes('.')?str.split('.')[1].length:0;
-    const den=Math.pow(10,dp), num=Math.round(v*den);
+    const [num,den] = decimalToFractionParts(v);
     const [n,d]=simp(num,den);
     ans = `${n}/${d}`;
     steps = `Write ${v} as ${num}/${den} and simplify to ${n}/${d}.`;
     meta.expect='frac';
+    meta.variants = { unsimplified: `${num}/${den}`, mixed: improperToMixed(n,d) };
   } else if(type==='frac-dec'){
-    const [n,d]=fPool[Math.floor(Math.random()*fPool.length)];
+    const [n,d]=pick(fPool);
     prompt=`Convert ${n}/${d} to a decimal.`;
     ans = fmtDec(n/d);
     steps=`Divide numerator by denominator: ${n} ÷ ${d} = ${ans}.`;
     meta.expect='dec';
   } else if(type==='frac-perc'){
-    const [n,d]=fPool[Math.floor(Math.random()*fPool.length)];
+    const [n,d]=pick(fPool);
     prompt=`Convert ${n}/${d} to percent.`;
     ans = `${fmtDec(n/d*100)}%`;
     steps=`(${n}/${d})×100 = ${ans}.`;
     meta.expect='perc';
   } else if(type==='perc-frac'){
-    const p=pPool[Math.floor(Math.random()*pPool.length)];
+    const p=pick(pPool);
     prompt=`Convert ${p}% to a fraction.`;
-    const [sn,sd]=simp(p,100);
-    ans = `${sn}/${sd}`;
-    steps=`${p}% = ${p}/100. Simplify to ${sn}/${sd}.`;
+    const [num,den] = percentToFractionParts(p);
+    const [n,d]=simp(num,den);
+    ans = `${n}/${d}`;
+    steps=`${p}% = ${p}/100 = ${num}/${den}. Simplify to ${n}/${d}.`;
     meta.expect='frac';
+    meta.variants = { unsimplified: `${num}/${den}`, mixed: improperToMixed(n,d) };
   } else if(type==='dec-perc'){
-    const v=decPool[Math.floor(Math.random()*decPool.length)];
+    const v=pick(decPool);
     prompt=`Convert ${v} to percent.`;
     ans=`${fmtDec(v*100)}%`;
     steps=`Multiply by 100: ${v} × 100 = ${ans}.`;
     meta.expect='perc';
   } else { // perc-dec
-    const p=pPool[Math.floor(Math.random()*pPool.length)];
+    const p=pick(pPool);
     prompt=`Convert ${p}% to a decimal.`;
     ans = fmtDec(p/100);
     steps=`Divide by 100: ${p}% → ${ans}.`;
@@ -320,7 +353,7 @@ document.addEventListener('keydown',e=>{
   if(e.key==='Escape') clearAnswer();
 });
 
-/* NEW: react to dropdown changes immediately */
+/* react to dropdown changes immediately */
 document.getElementById('g-type').addEventListener('change', refreshProblem);
 document.getElementById('g-diff').addEventListener('change', refreshProblem);
 
@@ -343,7 +376,7 @@ function wsInstruction(){
     'dec-frac':'Convert each decimal to a fraction (improper allowed).',
     'frac-dec':'Convert each fraction to a decimal.',
     'frac-perc':'Convert each fraction to a percent.',
-    'perc-frac':'Convert each percent to a fraction (improper).',
+    'perc-frac':'Convert each percent to a fraction (improper shown as improper & mixed).',
     'dec-perc':'Convert each decimal to a percent.',
     'perc-dec':'Convert each percent to a decimal.'
   };
@@ -352,20 +385,34 @@ function wsInstruction(){
 }
 document.getElementById('ws-type').addEventListener('change', wsInstruction);
 
+function composeWorksheetAnswer(type, meta, mainAns){
+  // Build answer string with unsimplified/simplified/mixed where it makes sense
+  if(type==='dec-frac' || type==='perc-frac'){
+    const parts=[];
+    if(meta?.variants?.unsimplified) parts.push(`unsimplified: ${meta.variants.unsimplified}`);
+    parts.push(`simplified: ${mainAns}`);
+    if(meta?.variants?.mixed) parts.push(`mixed: ${meta.variants.mixed}`);
+    return parts.join(' • ');
+  }
+  // For other types, just show main answer
+  return mainAns;
+}
+
 function generateWorksheet(){
   const grid=document.getElementById('grid');
   grid.innerHTML='';
   const n=+document.getElementById('ws-size').value;
   const t=document.getElementById('ws-type').value;
+  const d=document.getElementById('ws-diff').value;
   wsInstruction();
   let usedPrompts=new Set();
   for(let i=1;i<=n;i++){
-    const diff = ['easy','medium','hard'][i%3];
-    const {prompt,ans}=buildProblem(t,diff);
+    const {prompt,ans,meta}=buildProblem(t,d);
     if(usedPrompts.has(prompt)){ i--; continue; }
     usedPrompts.add(prompt);
     const card=document.createElement('div'); card.className='card'; card.tabIndex=0; card.setAttribute('role','button');
-    card.innerHTML = `<h4>${i}.</h4><div class="q">${prompt}</div><div class="ans">Answer: <b>${ans}</b></div><div class="dim">Click to reveal</div>`;
+    const revealText = composeWorksheetAnswer(t, meta, ans);
+    card.innerHTML = `<h4>${i}.</h4><div class="q">${prompt}</div><div class="ans">Answer: <b>${revealText}</b></div><div class="dim">Click to reveal</div>`;
     card.addEventListener('click',()=>toggleCard(card));
     card.addEventListener('keypress',e=>{ if(e.key==='Enter' || e.key===' ') { e.preventDefault(); toggleCard(card); }});
     grid.appendChild(card);
